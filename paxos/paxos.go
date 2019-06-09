@@ -113,7 +113,7 @@ type Node struct {
 // Paxos proposer routine
 // one gorouine for one log entry of one data item
 // there could be multiple proposer runing concurrently, depending on util
-func (n *Node) proposer(mchan chan *Message, dataID uint32, logID uint32, v string) bool {
+func (n *Node) proposer(mchan chan *Message, dataID uint32, logID uint32, v string) (bool, error) {
 	// highest accepted value from others, should be the same as v
 	var otherValue string
 	var highestAccept uint32
@@ -121,7 +121,10 @@ func (n *Node) proposer(mchan chan *Message, dataID uint32, logID uint32, v stri
 	// set initial proposal number
 	pid := uint32(n.config.ID)
 
-	for {
+	pretry := uint(0)
+	aretry := uint(0)
+
+	for pretry <= n.config.PrepareRetryTimes && aretry <= n.config.AcceptRetryTimes {
 		// update proposal number
 		pid += uint32(len(n.peers))
 
@@ -136,15 +139,27 @@ func (n *Node) proposer(mchan chan *Message, dataID uint32, logID uint32, v stri
 			Req:      true,
 		}
 
+		log.Debugf("proposer %d begins proposal %d for data %d and log %d",
+			n.config.ID, pid, m.DataID, m.LogID)
+
 		// prepare phase
 		notify1 := n.proposerBroadcast(m)
 		successful, retriable := n.proposerWaitPrepare(notify1, &highestAccept, &otherValue)
 
 		if !successful {
 			if retriable {
+				log.Warnf("proposer %d timedout (%d)s for proposal %d for data %d and log %d with"+
+					" value %s in PREPARE phase", n.config.ID, n.config.PrepareTimeout,
+					m.Proposal, m.DataID, m.LogID, m.Value)
+
 				continue
 			} else {
-				return false
+				log.Warnf("proposer %d failed in proposal %d for data %d and log %d with"+
+					" value %s in PREPARE phase",
+					n.config.ID, m.Proposal, m.DataID, m.LogID, m.Value)
+
+				return false, errors.New("a newer proposal for this entry was" +
+					" proposed in prepare phase")
 			}
 		}
 
@@ -154,7 +169,6 @@ func (n *Node) proposer(mchan chan *Message, dataID uint32, logID uint32, v stri
 			// this should rarely occur, since we assume one log entry from one
 			// data is manipulated by one unique proposer
 			// but with re-transmiting requests this might happen
-
 			log.Errorf("[paxos] proposer %d detected its proposal %d with value %s is forced to"+
 				" learn another value %s\n", m.Proposer, m.Proposal, m.Value, otherValue)
 			m.Value = otherValue
@@ -167,9 +181,16 @@ func (n *Node) proposer(mchan chan *Message, dataID uint32, logID uint32, v stri
 
 		if !successful {
 			if retriable {
+				log.Warnf("proposer %d timedout (%d)s for proposal %d for data %d and log %d with"+
+					" value %s in ACCEPT phase", n.config.ID, n.config.PrepareTimeout,
+					m.Proposal, m.DataID, m.LogID, m.Value)
 				continue
 			} else {
-				return false
+				log.Warnf("proposer %d failed in proposal %d for data %d and log %d with"+
+					" value %s in ACCEPT phase",
+					n.config.ID, m.Proposal, m.DataID, m.LogID, m.Value)
+				return false, errors.New("a newer proposal for this entry was" +
+					" proposed in accept phase")
 			}
 		}
 
@@ -180,10 +201,12 @@ func (n *Node) proposer(mchan chan *Message, dataID uint32, logID uint32, v stri
 		// broadcast commit
 		m.Phase = COMMIT
 		n.proposerBroadcast(m)
-		// TODO track every acceptor until they confirmed committed
 
-		return true
+		return true, nil
 	}
+
+	// retry times over limit, failed to propose
+	return false, errors.New("retry times over limit")
 }
 
 func (n *Node) proposerBroadcast(m *Message) chan *Message {
@@ -284,33 +307,31 @@ func (n *Node) acceptor(mchan chan chanMsg) {
 			m := cm.m
 
 			if m.Phase == PREPARE {
-				n.acceptorPhase1(&hp, &ha, &v, m)
+				n.acceptorPhase1(&hp, &ha, v, m)
+				cm.c <- m
 			} else if m.Phase == ACCEPT {
 				n.acceptorPhase2(&hp, &ha, &v, m)
-			} else if m.Phase == COMMIT {
-				committed = n.acceptorPhase3(&hp, &ha, &v, m)
-				log.Debugf("acceptor %n finialise phase 3 with committed %t for proposal %d with"+
-					" value %s", n.config.ID, committed, m.Proposal, m.Value)
+				cm.c <- m
 			} else {
-				// reject directly
-				m.Req = false
-				m.OK = false
-				committed = true
+				committed = n.acceptorPhase3(&hp, &ha, &v, m)
+				log.Debugf("acceptor %d finialise phase 3 with committed %t for proposal %d with"+
+					" value %s", n.config.ID, committed, m.Proposal, m.Value)
 			}
-
-			cm.c <- m
+		case <-time.After(n.config.AcceptorTimeout):
+			log.Warnf("acceptor %d timedout waiting for proposal, exiting", n.config.ID)
+			return
 		}
 	}
 }
 
-func (n *Node) acceptorPhase1(hp *uint32, ha *uint32, v *string, m *Message) {
+func (n *Node) acceptorPhase1(hp *uint32, ha *uint32, v string, m *Message) {
 	// no record (hp is 0) or this proposal is larger
 	if m.Proposal > *hp {
 		// accept and promise not to accept smaller proposals
 		m.OK = true
 		m.HighestPrepare = m.Proposal
 		m.HighestAccept = *ha
-		m.Value = *v
+		m.Value = v
 
 		// set the new proposal to highest
 		*hp = m.Proposal
@@ -361,9 +382,9 @@ func (n *Node) Propose(dataID uint32, logID uint32, v string) (bool, error) {
 	})
 
 	if atomic.LoadUint32(&n.nPendingProposal) >= n.config.MaxPendingProposals {
-		log.Errorf("[paxos] proposer %d failed to propose, concurrent issued proposals over limit\n",
-			n.config.ID)
-		return false, errors.New("Failed to propose, concurrent issued proposals over limit\n")
+		log.Errorf("[paxos] proposer %d failed to propose, "+
+			"concurrent issued proposals over limit\n", n.config.ID)
+		return false, errors.New("concurrent issued proposals over limit\n")
 	}
 
 	atomic.AddUint32(&n.nPendingProposal, 1)
@@ -371,9 +392,9 @@ func (n *Node) Propose(dataID uint32, logID uint32, v string) (bool, error) {
 	// non-buffering channel, force the progress to be synchronous
 	mchan := make(chan *Message)
 
-	res := n.proposer(mchan, dataID, logID, v)
+	res, err := n.proposer(mchan, dataID, logID, v)
 
-	return res, nil
+	return res, err
 }
 
 // start paxos node

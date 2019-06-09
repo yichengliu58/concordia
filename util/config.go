@@ -24,7 +24,13 @@ type Config struct {
 	//
 	PrepareTimeout time.Duration
 	//
+	PrepareRetryTimes uint
+	//
+	AcceptRetryTimes uint
+	//
 	AcceptTimeout time.Duration
+	//
+	AcceptorTimeout time.Duration
 	// log level
 	LogLevel int
 	// log output

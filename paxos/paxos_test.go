@@ -24,6 +24,7 @@ var (
 		AcceptorTimeout:     time.Second * 5,
 		LogOutput:           os.Stdout,
 		LogLevel:            util.ERROR,
+		QuorumNumber:        2,
 	}
 )
 
@@ -83,12 +84,12 @@ func TestNode_Propose(t *testing.T) {
 
 	count := 0
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(i int) {
 			dataID := rand.Intn(3)
 			value := rand.Intn(65536)
-			delay := rand.Intn(20)
+			delay := rand.Intn(10)
 			node := rand.Intn(3)
 
 			<-time.After(time.Duration(delay) * time.Second)
@@ -104,7 +105,6 @@ func TestNode_Propose(t *testing.T) {
 	}
 
 	wg.Wait()
-	<-time.After(time.Second * 3)
 
 	for i := uint32(0); i < 3; i++ {
 		rr, ok := ns[0].rsm.Load(i)
@@ -114,32 +114,41 @@ func TestNode_Propose(t *testing.T) {
 
 		r := rr.(*rsm.RSM)
 		leng := r.Committed.Len()
-		t.Logf("%d length : %d", i, leng)
 
 		c := make([]string, r.Committed.Len())
 		for _, v := range r.Committed {
 			c[v.ID] = v.Value
 		}
 
-		for i, v := range c {
-			t.Logf("[%d]: %s", i, v)
-		}
+		nodecount := 0
 
 		for _, n := range ns {
 			rr, ok := n.rsm.Load(i)
 			if !ok {
 				t.Fatalf("rsm nil")
 			}
-			r := rr.(*rsm.RSM)
-			if leng != r.Committed.Len() {
-				t.Fatalf("rsm length not the same %d != %d", leng, r.Committed.Len())
-			}
 
-			for _, v := range r.Committed {
-				if c[v.ID] != v.Value {
-					t.Fatalf("rsm has different values")
+			//for _, v := range r.Committed {
+			//	t.Logf("data %d node %d: [%d] %s", i, n.config.ID, v.ID, v.Value)
+			//}
+
+			r := rr.(*rsm.RSM)
+			diff := false
+			if leng == r.Committed.Len() {
+				for _, v := range r.Committed {
+					if c[v.ID] != v.Value {
+						diff = true
+					}
 				}
 			}
+
+			if !diff {
+				nodecount++
+			}
+		}
+
+		if nodecount < int(defaultConfig.QuorumNumber) {
+			t.Fatalf("valid nodes number is not enough")
 		}
 	}
 }

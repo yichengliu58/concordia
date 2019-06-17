@@ -26,7 +26,7 @@ type Logger struct {
 
 // default level is ERROR
 func NewLogger(prefix string) *Logger {
-	l := log.New(os.Stdout, prefix, log.LstdFlags|log.Lshortfile)
+	l := log.New(os.Stdout, prefix+" ", log.LstdFlags)
 
 	return &Logger{
 		l:     l,
@@ -39,7 +39,7 @@ func (l *Logger) SetOutput(output io.Writer) {
 }
 
 func (l *Logger) SetPrefix(prefix string) {
-	l.l.SetPrefix(prefix)
+	l.l.SetPrefix(prefix + " ")
 }
 
 func (l *Logger) SetLevel(level int) {

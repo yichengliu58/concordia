@@ -27,6 +27,7 @@ func main() {
 		QuorumNumber:        2,
 		PrepareTimeout:      time.Second * 3,
 		AcceptTimeout:       time.Second * 3,
+		AcceptorTimeout:     time.Second * 3,
 		LogOutput:           os.Stdout,
 		LogLevel:            util.DEBUG,
 	}
@@ -41,9 +42,10 @@ func main() {
 	<-time.After(time.Second * 10)
 	fmt.Println("begins proposing")
 
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 1; i++ {
 		go func(i int) {
-			ok, err := n.Propose(uint32(c.ID), uint32(i), "node1")
+			ok, err := n.Propose(uint32(c.ID), uint32(i),
+				strconv.Itoa(int(c.ID))+":"+strconv.Itoa(int(i)))
 			if !ok {
 				fmt.Println("node" + strconv.Itoa(int(c.ID)) +
 					"failed to propose log" + strconv.Itoa(i) + err.Error())

@@ -95,9 +95,11 @@ func fileReader(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
 		return
 	}
-
 	defer file.Close()
 
+	// set content-length to force not to use chunk
+	info, _ := file.Stat()
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
 	buf := make([]byte, config.FileBufferSize)
 	s, err := io.CopyBuffer(w, file, buf)
 	if err != nil {
@@ -117,9 +119,9 @@ func fetchFile(data, log uint32, name string) {
 			continue
 		}
 
-		if resp.StatusCode != 200 || resp.ContentLength <= 0 {
-			logger.Debugf("peer %s returning not valid: status %d, content length %d, "+
-				"trying next one", p.IP.String(), resp.StatusCode, resp.ContentLength)
+		if resp.StatusCode != 200 {
+			logger.Debugf("peer %s returning not valid: status %d, retrying next one",
+				p.IP.String(), resp.StatusCode, resp.ContentLength)
 			continue
 		}
 

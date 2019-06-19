@@ -111,12 +111,16 @@ type Node struct {
 	startClients sync.Once
 	// rsm log for each data id
 	rsm sync.Map
+	// record each data id ever seen
+	dataids map[uint32]uint32
 }
 
 // Paxos proposer routine
 // one gorouine for one value (belongs to one log entry) of one data item
 // there could be multiple proposer runing concurrently, depending on util
 func (n *Node) proposer(mchan chan *Message, dataID uint32, v string) (bool, error) {
+	// update data ids table
+	n.dataids[dataID] = dataID
 	// used to detect if value is changed
 	highestAccept := uint32(0)
 	otherValue := ""
@@ -315,6 +319,8 @@ func (n *Node) proposerWaitAccept(notify chan *Message) (accepted, timedout bool
 // which may include multiple proposals
 func (n *Node) acceptor(mchan chan chanMsg, logID, dataID uint32) {
 	committed := false
+	// update data ids table
+	n.dataids[dataID] = dataID
 
 	Logger.Debugf("acceptor %d started one for data %d log %d", n.config.ID, dataID, logID)
 
@@ -454,6 +460,33 @@ func (n *Node) Propose(dataID uint32, v string) (bool, error) {
 	res, err := n.proposer(mchan, dataID, v)
 
 	return res, err
+}
+
+func (n *Node) NextCommand(dataID uint32) (uint32, string) {
+	r, ok := n.rsm.Load(dataID)
+	if !ok {
+		return 0, ""
+	}
+
+	return r.(*rsm.RSM).NextCommitted()
+}
+
+func (n *Node) ExecuteCommand(dataID, logID uint32) {
+	r, ok := n.rsm.Load(dataID)
+	if ok {
+		r.(*rsm.RSM).ExecutionSucceed(logID)
+	}
+}
+
+func (n *Node) FailCommand(dataID, logID uint32) {
+	r, ok := n.rsm.Load(dataID)
+	if ok {
+		r.(*rsm.RSM).ExecutionFail(logID)
+	}
+}
+
+func (n *Node) DataIDInfo() map[uint32]uint32 {
+	return n.dataids
 }
 
 // start paxos node

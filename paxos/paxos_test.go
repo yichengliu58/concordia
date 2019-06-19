@@ -24,7 +24,7 @@ var (
 		AcceptorTimeout:     time.Second * 5,
 		LogOutput:           os.Stdout,
 		LogLevel:            util.ERROR,
-		QuorumNumber:        2,
+		QuorumNumber:        3,
 	}
 )
 
@@ -128,9 +128,9 @@ func TestNode_Propose(t *testing.T) {
 				t.Fatalf("rsm nil")
 			}
 
-			//for _, v := range r.Committed {
-			//	t.Logf("data %d node %d: [%d] %s", i, n.config.ID, v.ID, v.Value)
-			//}
+			for _, v := range r.Committed {
+				t.Logf("data %d node %d: [%d] %s", i, n.config.ID, v.ID, v.Value)
+			}
 
 			r := rr.(*rsm.RSM)
 			diff := false

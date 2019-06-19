@@ -11,6 +11,8 @@ const (
 	pending = iota
 	free
 	committed
+	executing
+	executed
 )
 
 var Logger = util.NewLogger("<rsm>")
@@ -218,4 +220,40 @@ func (r *RSM) Search() uint32 {
 	})
 
 	return id + 1
+}
+
+func (r *RSM) NextCommitted() (uint32, string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	for i := 0; i < r.Committed.Len(); i++ {
+		if r.Committed[i].status == committed {
+			r.Committed[i].status = executing
+			return r.Committed[i].ID, r.Committed[i].Value
+		}
+	}
+
+	return 0, ""
+}
+
+func (r *RSM) ExecutionSucceed(logID uint32) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	for i := 0; i < r.Committed.Len(); i++ {
+		if r.Committed[i].ID == logID {
+			r.Committed[i].status = executed
+		}
+	}
+}
+
+func (r *RSM) ExecutionFail(logID uint32) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	for i := 0; i < r.Committed.Len(); i++ {
+		if r.Committed[i].ID == logID {
+			r.Committed[i].status = committed
+		}
+	}
 }

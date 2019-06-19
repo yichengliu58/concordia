@@ -114,7 +114,14 @@ func fetchFile(data, log uint32, name string) {
 		resp, err := http.Get("http://" + p.IP.String() + ":" +
 			strconv.Itoa(int(config.ServicePort)) + "/files/" + name)
 		if err != nil {
-			logger.Debugf("peer %s doesn't have file %s, trying next one", p.IP.String(), name)
+			logger.Debugf("failed to connect to peer %s, error: %s, retrying next one",
+				p.IP.String(), err.Error())
+			continue
+		}
+
+		if resp.StatusCode != 200 || resp.ContentLength <= 0 {
+			logger.Debugf("peer %s returning not valid: status %d, content length %d, "+
+				"trying next one", p.IP.String(), resp.StatusCode, resp.ContentLength)
 			continue
 		}
 
@@ -139,9 +146,10 @@ func fetchFile(data, log uint32, name string) {
 			file.Seek(0, 0)
 			digest := md5.New()
 			io.CopyBuffer(digest, file, buf)
-			if string(digest.Sum(nil)) != name {
-				logger.Errorf("file %s received from %s has wrong digest, deleting",
-					name, p.IP.String())
+			digests := fmt.Sprintf("%x", digest.Sum(nil))
+			if digests != name {
+				logger.Errorf("file %s received from %s has wrong digest: %s != %s, deleting",
+					name, digests, name, p.IP.String())
 				os.Remove(config.FileDir + "/" + name)
 				pnode.FailCommand(data, log)
 			} else {

@@ -91,7 +91,7 @@ func fileReader(w http.ResponseWriter, r *http.Request) {
 	// search for that file
 	file, err := os.Open(config.FileDir + "/" + name)
 	if err != nil {
-		logger.Errorf("failed to open file %s", name)
+		logger.Errorf("failed to open file %s: %s", name, err.Error())
 		w.WriteHeader(404)
 		return
 	}
@@ -99,13 +99,11 @@ func fileReader(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	buf := make([]byte, config.FileBufferSize)
-	_, err = io.CopyBuffer(w, file, buf)
+	s, err := io.CopyBuffer(w, file, buf)
 	if err != nil {
-		logger.Errorf("failed to read file %s", name)
-		w.WriteHeader(404)
+		logger.Errorf("failed to read file %s: %s, size already read: %d",
+			name, err.Error(), s)
 	}
-
-	w.WriteHeader(200)
 }
 
 func fetchFile(data, log uint32, name string) {

@@ -28,6 +28,7 @@ var (
 		QuorumNumber:        3,
 		FileDir:             ".",
 		DigestHeader:        "FileDigest",
+		DataHeader:          "DataID",
 		FileBufferSize:      2048,
 		CheckingDelay:       time.Second * 3,
 	}
@@ -81,6 +82,7 @@ func TestFileWriter(t *testing.T) {
 	file = bytes.NewBuffer([]byte("this is the content of a test file"))
 	req, _ = http.NewRequest("POST", "http://127.0.0.1:8000/deploy", file)
 	req.Header.Add("FileDigest", digests)
+	req.Header.Add("DataID", strconv.Itoa(1))
 	resp, err = client.Do(req)
 	if err != nil {
 		t.Fatalf(err.Error())
@@ -122,4 +124,8 @@ func TestFileReader(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("recieved status %d not 200", resp.StatusCode)
 	}
+
+	content := make([]byte, 100)
+	s, _ := resp.Body.Read(content)
+	t.Logf("%s", content[:s])
 }

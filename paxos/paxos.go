@@ -521,10 +521,11 @@ func NewNode(config *util.Config) *Node {
 	}
 
 	n := &Node{
-		self:   s,
-		peers:  c,
-		router: r,
-		config: config,
+		self:    s,
+		peers:   c,
+		router:  r,
+		config:  config,
+		dataids: make(map[uint32]uint32),
 	}
 
 	atomic.StoreUint32(&n.nextProposal, uint32(n.config.ID))

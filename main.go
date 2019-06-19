@@ -24,6 +24,7 @@ func main() {
 		QuorumNumber:        3,
 		FileDir:             ".",
 		DigestHeader:        "FileDigest",
+		DataHeader:          "DataID",
 		FileBufferSize:      1024,
 		CheckingDelay:       time.Second * 3,
 	}

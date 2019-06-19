@@ -108,18 +108,31 @@ func fileReader(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
-func fetchFile(data, log uint32, file *os.File, name string) {
+func fetchFile(data, log uint32, name string) {
 	// try until get a file
 	for _, p := range config.Peers {
 		resp, err := http.Get("http://" + p.IP.String() + ":" +
 			strconv.Itoa(int(config.ServicePort)) + "/files/" + name)
 		if err != nil {
+			logger.Debugf("peer %s doesn't have file %s, trying next one", p.IP.String(), name)
 			continue
 		}
+
+		logger.Debugf("got file %s from peer %s", name, p.IP.String())
 		defer resp.Body.Close()
+
+		// create file
+		file, err := os.Create(config.FileDir + "/" + name)
+		if err != nil {
+			logger.Errorf("failed to create file %s, %s", name, err.Error())
+			pnode.FailCommand(data, log)
+			return
+		}
+
 		buf := make([]byte, config.FileBufferSize)
 		_, e := io.CopyBuffer(file, resp.Body, buf)
 		if e != nil {
+			logger.Errorf("failed to write file %s, %s", name, e.Error())
 			pnode.FailCommand(data, log)
 		} else {
 			// check digest
@@ -127,8 +140,12 @@ func fetchFile(data, log uint32, file *os.File, name string) {
 			digest := md5.New()
 			io.CopyBuffer(digest, file, buf)
 			if string(digest.Sum(nil)) != name {
+				logger.Errorf("file %s received from %s has wrong digest, deleting",
+					name, p.IP.String())
+				os.Remove(config.FileDir + "/" + name)
 				pnode.FailCommand(data, log)
 			} else {
+				logger.Debugf("succeeded writing file %s", name)
 				pnode.ExecuteCommand(data, log)
 			}
 		}
@@ -142,11 +159,7 @@ func update(delay time.Duration) {
 		for id := range pnode.DataIDInfo() {
 			// check commands in this data set
 			for log, name := pnode.NextCommand(id); name != ""; log, name = pnode.NextCommand(id) {
-				// check if file exists
-				file, err := os.Open(name)
-				if err == os.ErrNotExist {
-					go fetchFile(id, log, file, name)
-				}
+				go fetchFile(id, log, name)
 			}
 		}
 	}

@@ -31,7 +31,7 @@ func main() {
 
 	addr, _ := net.ResolveTCPAddr("tcp", "169.254.80.31:10000")
 	config.Peers = append(config.Peers, *addr)
-	addr, _ = net.ResolveTCPAddr("tcp", "169.254.9.231:10000")
+	addr, _ = net.ResolveTCPAddr("tcp", "169.254.9.213:10000")
 	config.Peers = append(config.Peers, *addr)
 	addr, _ = net.ResolveTCPAddr("tcp", "169.254.169.101:10000")
 	config.Peers = append(config.Peers, *addr)

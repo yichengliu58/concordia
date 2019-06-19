@@ -112,6 +112,13 @@ func TestNode_Propose(t *testing.T) {
 			continue
 		}
 
+		for _, n := range ns {
+			v, ok := n.dataids[i]
+			if !ok || v != i {
+				t.Fatalf("node %d has incorrect dataids for data %d", n.config.ID, i)
+			}
+		}
+
 		r := rr.(*rsm.RSM)
 		leng := r.Committed.Len()
 

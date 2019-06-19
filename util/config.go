@@ -33,8 +33,10 @@ type Config struct {
 	LogOutput io.Writer
 	// file dir
 	FileDir string
-	// header name
+	// digest header name
 	DigestHeader string
+	// data id header name
+	DataHeader string
 	// file buffer size in byte
 	FileBufferSize uint
 	// delay for checking new files

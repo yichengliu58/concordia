@@ -28,6 +28,14 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dataID, err := strconv.Atoi(r.Header.Get(config.DataHeader))
+	if err != nil || dataID < 0 {
+		logger.Debugf("request doesn't have a valid data header")
+		w.WriteHeader(400)
+		w.Write([]byte("data header not valid"))
+		return
+	}
+
 	filename := config.FileDir + "/" + r.Header.Get(config.DigestHeader)
 
 	// create new file, override if exists
@@ -66,6 +74,14 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// begin proposal
+	ok, err := pnode.Propose(uint32(dataID), digest)
+	if !ok {
+		logger.Warnf("failed to propose data %d value %s, %s", dataID, digest, err.Error())
+		w.WriteHeader(500)
+		w.Write([]byte("failed to propose, " + err.Error()))
+		return
+	}
 	w.WriteHeader(200)
 }
 

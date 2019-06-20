@@ -157,6 +157,7 @@ func fetchFile(data, log uint32, name string) {
 				pnode.ExecuteCommand(data, log)
 			}
 		}
+		return
 	}
 }
 

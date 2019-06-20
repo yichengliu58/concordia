@@ -257,3 +257,20 @@ func (r *RSM) ExecutionFail(logID uint32) {
 		}
 	}
 }
+
+func (r *RSM) Recover(logID uint32, value string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	if r.Committed.Len() != 0 {
+		Logger.Panicf("rsm %p has non-empty (%d) committed queue when recovering",
+			r, r.Committed.Len())
+		return
+	}
+
+	r.Committed = append(r.Committed, &LogEntry{
+		ID:     logID,
+		Value:  value,
+		status: committed,
+	})
+}

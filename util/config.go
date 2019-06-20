@@ -41,4 +41,6 @@ type Config struct {
 	FileBufferSize uint
 	// delay for checking new files
 	CheckingDelay time.Duration
+	// number n of first nth of committed queue elements that need to recover
+	RecoverCommittedNumber uint
 }

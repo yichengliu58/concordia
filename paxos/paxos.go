@@ -18,6 +18,7 @@ const (
 	PREPARE = iota
 	ACCEPT
 	COMMIT
+	RECOVER
 )
 
 var Logger = util.NewLogger("<paxos>")
@@ -41,12 +42,20 @@ type Message struct {
 	HighestAccept  uint32
 	// whether this request is accepted
 	OK bool
+	// committed queue elements
+	CommittedQueue map[uint32][]command
 }
 
 // used to transfer message from router to paxos goroutines
 type chanMsg struct {
 	c chan *Message
 	m *Message
+}
+
+// used to simplify a rsm.LogEntry struct
+type command struct {
+	id    uint32
+	value string
 }
 
 // defines RPC services, also used to do message routing
@@ -113,6 +122,37 @@ type Node struct {
 	rsm sync.Map
 	// record each data id ever seen
 	dataids map[uint32]uint32
+}
+
+// recover committed queue from others when starting up
+func (n *Node) recover(num uint) {
+	m := &Message{
+		Phase: RECOVER,
+	}
+	notify := n.proposerBroadcast(m)
+
+	var qmap map[uint32][]command
+	for i := 0; i < len(n.config.Peers); i++ {
+		m = <-notify
+		if m == nil || m.Phase != RECOVER {
+			continue
+		}
+
+		if len(m.CommittedQueue) >= len(qmap) {
+			qmap = m.CommittedQueue
+		}
+	}
+
+	if len(qmap) > 0 {
+		// at this time n.rsm.committedqueue must be empty
+		for _, dataID := range qmap {
+			rr, _ := n.rsm.LoadOrStore(dataID, &rsm.RSM{})
+			r := rr.(*rsm.RSM)
+			for _, c := range dataID {
+				r.Recover(c.id, c.value)
+			}
+		}
+	}
 }
 
 // Paxos proposer routine
@@ -495,6 +535,7 @@ func (n *Node) Start() error {
 		return err
 	}
 
+	n.recover(n.config.RecoverCommittedNumber)
 	return nil
 }
 

@@ -43,7 +43,7 @@ type Message struct {
 	// whether this request is accepted
 	OK bool
 	// committed queue elements
-	CommittedQueue map[uint32][]command
+	CommittedQueue map[uint32][]Command
 }
 
 // used to transfer message from router to paxos goroutines
@@ -53,9 +53,9 @@ type chanMsg struct {
 }
 
 // used to simplify a rsm.LogEntry struct
-type command struct {
-	id    uint32
-	value string
+type Command struct {
+	ID    uint32
+	Value string
 }
 
 // defines RPC services, also used to do message routing
@@ -65,12 +65,19 @@ type rpcRouter struct {
 	acceptorTableLock sync.RWMutex
 	// request handler from Node.acceptor()
 	requestHandler func(cm chan chanMsg, logID, dataID uint32)
+	recoverHandler func() *Message
 }
 
 // Acceptors use this to receive requests
 func (r *rpcRouter) RequestHandler(_ string, req interface{}) interface{} {
 	rm := req.(Message)
 	m := &rm
+
+	// if this is a recover request
+	if m.Phase == RECOVER {
+		m = r.recoverHandler()
+		return m
+	}
 
 	// look up to see if this is for an existing prososal
 	tid := uint64(m.DataID<<32) | uint64(m.LogID)
@@ -116,8 +123,6 @@ type Node struct {
 	nPendingProposal uint32
 	// atomic next proposal number
 	nextProposal uint32
-	// start clients once
-	startClients sync.Once
 	// rsm log for each data id
 	rsm sync.Map
 	// record each data id ever seen
@@ -131,7 +136,7 @@ func (n *Node) recover(num uint) {
 	}
 	notify := n.proposerBroadcast(m)
 
-	var qmap map[uint32][]command
+	var qmap map[uint32][]Command
 	for i := 0; i < len(n.config.Peers); i++ {
 		m = <-notify
 		if m == nil || m.Phase != RECOVER {
@@ -149,9 +154,32 @@ func (n *Node) recover(num uint) {
 			rr, _ := n.rsm.LoadOrStore(dataID, &rsm.RSM{})
 			r := rr.(*rsm.RSM)
 			for _, c := range dataID {
-				r.Recover(c.id, c.value)
+				r.Recover(c.ID, c.Value)
 			}
 		}
+	}
+}
+
+func (n *Node) recoverHandler() *Message {
+	qmap := make(map[uint32][]Command)
+	for _, dataid := range n.dataids {
+		rr, ok := n.rsm.Load(dataid)
+		if !ok {
+			continue
+		}
+		r := rr.(*rsm.RSM)
+		qmap[dataid] = make([]Command, 0)
+		for i := 0; i < r.Committed.Len() && i < int(n.config.RecoverCommittedNumber); i++ {
+			qmap[dataid] = append(qmap[dataid], Command{
+				ID:    r.Committed[i].ID,
+				Value: r.Committed[i].Value,
+			})
+		}
+	}
+
+	return &Message{
+		Phase:          RECOVER,
+		CommittedQueue: qmap,
 	}
 }
 
@@ -479,13 +507,6 @@ func (n *Node) acceptorPhase3(hp *uint32, ha *uint32, v *string, m *Message) boo
 
 // given a value, try best to put it in a log entry
 func (n *Node) Propose(dataID uint32, v string) (bool, error) {
-	// lazy clients connection
-	n.startClients.Do(func() {
-		for _, p := range n.peers {
-			p.Start()
-		}
-	})
-
 	if atomic.LoadUint32(&n.nPendingProposal) >= n.config.MaxPendingProposals {
 		Logger.Errorf("[paxos] proposer %d failed to propose, "+
 			"concurrent issued proposals over limit\n", n.config.ID)
@@ -535,7 +556,11 @@ func (n *Node) Start() error {
 		return err
 	}
 
+	for _, p := range n.peers {
+		p.Start()
+	}
 	n.recover(n.config.RecoverCommittedNumber)
+
 	return nil
 }
 
@@ -573,6 +598,7 @@ func NewNode(config *util.Config) *Node {
 
 	// one node object for one machine node, so it's ok to set n.acceptor as handler
 	n.router.requestHandler = n.acceptor
+	n.router.recoverHandler = n.recoverHandler
 
 	return n
 }

@@ -273,4 +273,6 @@ func (r *RSM) Recover(logID uint32, value string) {
 		Value:  value,
 		status: committed,
 	})
+
+	sort.Sort(r.Committed)
 }

@@ -62,23 +62,28 @@ func TestNode_Propose(t *testing.T) {
 	ns := make([]*Node, 3)
 
 	ns[0] = NewNode(&c1)
-	err := ns[0].Start()
-	if err != nil {
-		t.Fatalf("failed to start node: %s", err.Error())
-	}
+	go func() {
+		err := ns[0].Start()
+		if err != nil {
+			t.Fatalf("failed to start node: %s", err.Error())
+		}
+	}()
 
 	ns[1] = NewNode(&c2)
-	err = ns[1].Start()
-	if err != nil {
-		t.Fatalf("failed to start node: %s", err.Error())
-	}
+	go func() {
+		err := ns[1].Start()
+		if err != nil {
+			t.Fatalf("failed to start node: %s", err.Error())
+		}
+	}()
 
 	ns[2] = NewNode(&c3)
-	err = ns[2].Start()
-
-	if err != nil {
-		t.Fatalf("failed to start node: %s", err.Error())
-	}
+	go func() {
+		err := ns[2].Start()
+		if err != nil {
+			t.Fatalf("failed to start node: %s", err.Error())
+		}
+	}()
 
 	wg := sync.WaitGroup{}
 

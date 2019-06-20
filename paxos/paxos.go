@@ -150,11 +150,13 @@ func (n *Node) recover(num uint) {
 
 	if len(qmap) > 0 {
 		// at this time n.rsm.committedqueue must be empty
-		for _, dataID := range qmap {
-			rr, _ := n.rsm.LoadOrStore(dataID, &rsm.RSM{})
-			r := rr.(*rsm.RSM)
-			for _, c := range dataID {
-				r.Recover(c.ID, c.Value)
+		for dataID, commands := range qmap {
+			if len(commands) > 0 {
+				rr, _ := n.rsm.LoadOrStore(dataID, &rsm.RSM{})
+				r := rr.(*rsm.RSM)
+				for _, c := range commands {
+					r.Recover(c.ID, c.Value)
+				}
 			}
 		}
 	}

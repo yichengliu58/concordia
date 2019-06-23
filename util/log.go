@@ -43,9 +43,9 @@ func (l *Logger) SetPrefix(prefix string) {
 }
 
 func (l *Logger) SetLevel(level int) {
-	if level < DEBUG {
+	if level <= DEBUG {
 		l.level = DEBUG
-	} else if level > PANIC {
+	} else if level >= FATAL {
 		l.level = FATAL
 	} else {
 		l.level = level

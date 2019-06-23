@@ -200,7 +200,7 @@ func (r *RSM) Search() uint32 {
 
 		r.pending.PushFront(&LogEntry{
 			ID:     id,
-			status: free,
+			status: pending,
 		})
 
 		return id
@@ -208,6 +208,7 @@ func (r *RSM) Search() uint32 {
 
 	for e := r.pending.Front(); e != nil; e = e.Next() {
 		if e.Value.(*LogEntry).status == free {
+			e.Value.(*LogEntry).status = pending
 			return e.Value.(*LogEntry).ID
 		}
 	}
@@ -216,7 +217,7 @@ func (r *RSM) Search() uint32 {
 	id = r.pending.Back().Value.(*LogEntry).ID
 	r.pending.PushBack(&LogEntry{
 		ID:     id + 1,
-		status: free,
+		status: pending,
 	})
 
 	return id + 1

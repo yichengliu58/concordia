@@ -514,7 +514,8 @@ func (n *Node) Propose(dataID uint32, v string) (bool, error) {
 	// non-buffering channel, force the progress to be synchronous
 	mchan := make(chan *Message)
 	res, err := n.proposer(mchan, dataID, v)
-	atomic.AddUint32(&n.nPendingProposal, -1)
+	// decrease by 1
+	atomic.AddUint32(&n.nPendingProposal, ^uint32(0))
 
 	return res, err
 }

@@ -80,7 +80,7 @@ func (r *rpcRouter) RequestHandler(_ string, req interface{}) interface{} {
 	}
 
 	// look up to see if this is for an existing prososal
-	tid := uint64(m.DataID<<32) | uint64(m.LogID)
+	tid := uint64(m.DataID)<<32 | uint64(m.LogID)
 	r.acceptorTableLock.RLock()
 	c, ok := r.acceptorTable[tid]
 	r.acceptorTableLock.RUnlock()
@@ -516,11 +516,10 @@ func (n *Node) Propose(dataID uint32, v string) (bool, error) {
 	}
 
 	atomic.AddUint32(&n.nPendingProposal, 1)
-
 	// non-buffering channel, force the progress to be synchronous
 	mchan := make(chan *Message)
-
 	res, err := n.proposer(mchan, dataID, v)
+	atomic.AddUint32(&n.nPendingProposal, -1)
 
 	return res, err
 }

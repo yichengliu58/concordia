@@ -69,6 +69,7 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 	if digest != r.Header.Get(config.DigestHeader) {
 		logger.Debugf("file uploaded digest %s does not match header %s",
 			digest, r.Header.Get(config.DigestHeader))
+		os.Remove(filename)
 		w.WriteHeader(400)
 		w.Write([]byte("digest does not match"))
 		return

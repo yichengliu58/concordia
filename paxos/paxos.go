@@ -401,6 +401,13 @@ func (n *Node) acceptor(mchan chan chanMsg, logID, dataID uint32) {
 	r := rr.(*rsm.RSM)
 	e := r.Insert(logID)
 
+	defer func() {
+		tid := uint64(dataID)<<32 | uint64(logID)
+		n.router.acceptorTableLock.Lock()
+		delete(n.router.acceptorTable, tid)
+		n.router.acceptorTableLock.Unlock()
+	}()
+
 	if e == nil {
 		// this entry has been committed before, reject this proposal
 		cm := <-mchan
@@ -441,24 +448,12 @@ func (n *Node) acceptor(mchan chan chanMsg, logID, dataID uint32) {
 					Logger.Debugf("acceptor %d finshed phase 3 with committed %t for proposal %d data"+
 						" %d log %d value %s",
 						n.config.ID, committed, m.Proposal, m.DataID, m.LogID, m.Value)
-
-					tid := uint64(dataID<<32) | uint64(logID)
-					n.router.acceptorTableLock.Lock()
-					delete(n.router.acceptorTable, tid)
-					n.router.acceptorTableLock.Unlock()
-
 					return
 				}
 			}
 		case <-time.After(n.config.AcceptorTimeout):
 			Logger.Warnf("acceptor %d timedout waiting for proposal, exiting", n.config.ID)
 			r.Free(e)
-
-			tid := uint64(dataID<<32) | uint64(logID)
-			n.router.acceptorTableLock.Lock()
-			delete(n.router.acceptorTable, tid)
-			n.router.acceptorTableLock.Unlock()
-
 			return
 		}
 	}

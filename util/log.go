@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	FATAL = iota
-	PANIC
-	ERROR
-	WARN
+	DEBUG = iota
 	INFO
-	DEBUG
+	WARN
+	ERROR
+	PANIC
+	FATAL
 )
 
 // a simple logger with features:

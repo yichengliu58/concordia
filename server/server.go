@@ -79,6 +79,7 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 	ok, err := pnode.Propose(uint32(dataID), digest)
 	if !ok {
 		logger.Warnf("failed to propose data %d value %s, %s", dataID, digest, err.Error())
+		os.Remove(filename)
 		w.WriteHeader(500)
 		w.Write([]byte("failed to propose, " + err.Error()))
 		return
@@ -177,8 +178,8 @@ func update(delay time.Duration) {
 
 func Start(c *util.Config) error {
 	config = c
-	logger.SetOutput(os.Stdout)
-	logger.SetLevel(util.DEBUG)
+	logger.SetOutput(config.LogOutput)
+	logger.SetLevel(config.LogLevel)
 
 	pnode = paxos.NewNode(c)
 	// set up paxos

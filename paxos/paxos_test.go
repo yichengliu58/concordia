@@ -5,61 +5,45 @@ import (
 	"concordia/util"
 	"math/rand"
 	"net"
-	"os"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 )
 
-var (
-	defaultConfig = util.Config{
-		ID:                  1,
-		ProtoPort:           10000,
-		ServicePort:         8000,
-		Peers:               make([]net.TCPAddr, 0),
-		MaxPendingProposals: 100,
-		PrepareTimeout:      time.Second * 5,
-		AcceptTimeout:       time.Second * 5,
-		AcceptorTimeout:     time.Second * 5,
-		LogOutput:           os.Stdout,
-		LogLevel:            util.ERROR,
-		QuorumNumber:        3,
-	}
-)
-
+// test non-Byzantine fault
 func TestNode_Propose(t *testing.T) {
-	c1 := defaultConfig
+	c, err := util.ParseConfig("default_conf.json")
+	if err != nil {
+		t.Fatalf("failed to parse conf: %v", err)
+	}
+	// modify addrs
+	for i := 1; i <= 5; i++ {
+		localAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:"+strconv.Itoa(10000+i))
+		c.Peers[uint8(i)].Addr = *localAddr
+	}
+	// no need to change keys
+	c1 := *c
 	c1.ID = 1
-	c1.ProtoPort = 8001
-	a, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:8002")
-	c1.Peers = append(c1.Peers, *a)
-	a, _ = net.ResolveTCPAddr("tcp", "127.0.0.1:8003")
-	c1.Peers = append(c1.Peers, *a)
-	a, _ = net.ResolveTCPAddr("tcp", "127.0.0.1:8001")
-	c1.Peers = append(c1.Peers, *a)
+	c1.ProtoPort = 10001
 
-	c2 := defaultConfig
+	c2 := c1
 	c2.ID = 2
-	c2.ProtoPort = 8002
-	a, _ = net.ResolveTCPAddr("tcp", "127.0.0.1:8001")
-	c2.Peers = append(c2.Peers, *a)
-	a, _ = net.ResolveTCPAddr("tcp", "127.0.0.1:8003")
-	c2.Peers = append(c2.Peers, *a)
-	a, _ = net.ResolveTCPAddr("tcp", "127.0.0.1:8002")
-	c2.Peers = append(c2.Peers, *a)
+	c2.ProtoPort = 10002
 
-	c3 := defaultConfig
+	c3 := c1
 	c3.ID = 3
-	c3.ProtoPort = 8003
-	a, _ = net.ResolveTCPAddr("tcp", "127.0.0.1:8001")
-	c3.Peers = append(c3.Peers, *a)
-	a, _ = net.ResolveTCPAddr("tcp", "127.0.0.1:8002")
-	c3.Peers = append(c3.Peers, *a)
-	a, _ = net.ResolveTCPAddr("tcp", "127.0.0.1:8003")
-	c3.Peers = append(c3.Peers, *a)
+	c3.ProtoPort = 10003
 
-	ns := make([]*Node, 3)
+	c4 := c1
+	c4.ID = 4
+	c4.ProtoPort = 10004
+
+	c5 := c1
+	c5.ID = 5
+	c5.ProtoPort = 10005
+
+	ns := make([]*Node, 5)
 
 	ns[0] = NewNode(&c1)
 	go func() {
@@ -85,8 +69,23 @@ func TestNode_Propose(t *testing.T) {
 		}
 	}()
 
-	wg := sync.WaitGroup{}
+	ns[3] = NewNode(&c4)
+	go func() {
+		err := ns[3].Start()
+		if err != nil {
+			t.Fatalf("failed to start node: %s", err.Error())
+		}
+	}()
 
+	ns[4] = NewNode(&c5)
+	go func() {
+		err := ns[4].Start()
+		if err != nil {
+			t.Fatalf("failed to start node: %s", err.Error())
+		}
+	}()
+
+	wg := sync.WaitGroup{}
 	count := 0
 
 	for i := 0; i < 10; i++ {
@@ -98,7 +97,7 @@ func TestNode_Propose(t *testing.T) {
 			node := rand.Intn(3)
 
 			<-time.After(time.Duration(delay) * time.Second)
-			ok, err := ns[node].Propose(uint32(dataID), strconv.Itoa(value))
+			ok, err := ns[node].Propose(uint32(dataID), strconv.Itoa(value), "")
 			if !ok {
 				t.Logf("node %d PROPOSAL %d FAILED: %s", node, value, err.Error())
 			} else {
@@ -159,8 +158,13 @@ func TestNode_Propose(t *testing.T) {
 			}
 		}
 
-		if nodecount < int(defaultConfig.QuorumNumber) {
+		if nodecount < int(c1.QuorumNumber) {
 			t.Fatalf("valid nodes number is not enough")
 		}
 	}
+}
+
+// test Byzantine fault
+func TestNode_Propose2(t *testing.T) {
+
 }

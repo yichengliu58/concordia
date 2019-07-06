@@ -21,7 +21,8 @@ var (
 
 // for user to upload file
 func fileWriter(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get(config.DigestHeader) == "" {
+	value := r.Header.Get(config.DigestHeader)
+	if value == "" {
 		logger.Debugf("request doesn't have a valid digest header")
 		w.WriteHeader(400)
 		w.Write([]byte("digest header not found"))
@@ -34,6 +35,24 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
 		w.Write([]byte("data header not valid"))
 		return
+	}
+
+	clientSig := r.Header.Get(config.SignatureHeader)
+	if config.ByzantineFaultTolerance {
+		if clientSig == "" {
+			logger.Debugf("request doesn't have a valid signature header")
+			w.WriteHeader(400)
+			w.Write([]byte("signature header not found"))
+			return
+		}
+		// check client signature
+		if util.Verify(value, clientSig, config.ClientKey) != nil {
+			// failed to verify client signature
+			logger.Debugf("request contains an invalid client signature")
+			w.WriteHeader(400)
+			w.Write([]byte("invalid signature"))
+			return
+		}
 	}
 
 	filename := config.FileDir + "/" + r.Header.Get(config.DigestHeader)
@@ -66,9 +85,8 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 	io.CopyBuffer(hash, file, buf)
 	digest := fmt.Sprintf("%x", hash.Sum(nil))
 
-	if digest != r.Header.Get(config.DigestHeader) {
-		logger.Debugf("file uploaded digest %s does not match header %s",
-			digest, r.Header.Get(config.DigestHeader))
+	if digest != value {
+		logger.Debugf("file uploaded digest %s does not match header %s", digest, value)
 		os.Remove(filename)
 		w.WriteHeader(400)
 		w.Write([]byte("digest does not match"))
@@ -76,7 +94,7 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// begin proposal
-	ok, err := pnode.Propose(uint32(dataID), digest)
+	ok, err := pnode.Propose(uint32(dataID), digest, clientSig)
 	if !ok {
 		logger.Warnf("failed to propose data %d value %s, %s", dataID, digest, err.Error())
 		os.Remove(filename)
@@ -113,21 +131,21 @@ func fileReader(w http.ResponseWriter, r *http.Request) {
 func fetchFile(data, log uint32, name string) {
 	// try until get a file
 	for _, p := range config.Peers {
-		resp, err := http.Get("http://" + p.IP.String() + ":" +
+		resp, err := http.Get("http://" + p.Addr.IP.String() + ":" +
 			strconv.Itoa(int(config.ServicePort)) + "/files/" + name)
 		if err != nil {
 			logger.Debugf("failed to connect to peer %s, error: %s, retrying next one",
-				p.IP.String(), err.Error())
+				p.Addr.IP.String(), err.Error())
 			continue
 		}
 
 		if resp.StatusCode != 200 {
 			logger.Debugf("peer %s returning not valid: status %d, retrying next one",
-				p.IP.String(), resp.StatusCode, resp.ContentLength)
+				p.Addr.IP.String(), resp.StatusCode, resp.ContentLength)
 			continue
 		}
 
-		logger.Debugf("got file %s from peer %s", name, p.IP.String())
+		logger.Debugf("got file %s from peer %s", name, p.Addr.IP.String())
 		defer resp.Body.Close()
 
 		// create file
@@ -151,7 +169,7 @@ func fetchFile(data, log uint32, name string) {
 			digests := fmt.Sprintf("%x", digest.Sum(nil))
 			if digests != name {
 				logger.Errorf("file %s received from %s has wrong digest: %s != %s, deleting",
-					name, digests, name, p.IP.String())
+					name, digests, name, p.Addr.IP.String())
 				os.Remove(config.FileDir + "/" + name)
 				pnode.FailCommand(data, log)
 			} else {

@@ -1,0 +1,30 @@
+{
+  "ID": 1,
+  "ProtoPort": 10000,
+  "ServicePort": 8000,
+  "Peers": [
+    {"ID": 1, "PublicKey": "1/publickey.pem", "Addr": "169.254.80.31:10000"},
+    {"ID": 2, "PublicKey": "2/publickey.pem", "Addr": "169.254.9.213:10000"},
+    {"ID": 3, "PublicKey": "3/publickey.pem", "Addr": "169.254.169.101:10000"},
+    {"ID": 4, "PublicKey": "4/publickey.pem", "Addr": "169.254.161.78:10000"},
+    {"ID": 5, "PublicKey": "5/publickey.pem", "Addr": "169.254.150.125:10000"}
+  ],
+  "ClientKey": "client/publickey.pem",
+  "SelfKey": "1/privatekey.pem",
+  "MaxPendingProposals": 100,
+  "QuorumNumber": 3,
+  "PrepareTimeout": 3,
+  "AcceptTimeout": 3,
+  "AcceptorTimeout": 3,
+  "LogLevel": 3,
+  "FileDir": "files",
+  "DigestHeader": "FileDigest",
+  "DataHeader": "DataID",
+  "SignatureHeader": "Signature",
+  "FileBufferSize": 1024,
+  "CheckingDelay": 1,
+  "RecoverCommittedNumber": 5,
+  "ByzantineFaultTolerance": false,
+  "FaultyNumber": 1,
+  "KeyDir": "keys"
+}

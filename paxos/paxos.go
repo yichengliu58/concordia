@@ -7,6 +7,7 @@ import (
 	"concordia/util"
 	"crypto/rsa"
 	"errors"
+	"fmt"
 	"github.com/valyala/gorpc"
 	"strconv"
 	"sync"
@@ -96,7 +97,7 @@ func (r *rpcRouter) RequestHandler(_ string, req interface{}) interface{} {
 	r.acceptorTableLock.RUnlock()
 
 	if !ok {
-		if m.Phase == PREPARE {
+		if m.Phase == PREPARE || m.Phase == VERIFYPREPARE {
 			// first proposal, make new acceptor to handle it
 			// non-buffered channel
 			c = make(chan chanMsg)
@@ -106,7 +107,7 @@ func (r *rpcRouter) RequestHandler(_ string, req interface{}) interface{} {
 			r.acceptorTableLock.Unlock()
 
 			go r.requestHandler(c, m.LogID, m.DataID)
-		} else if m.Phase == VERIFYPREPARE || m.Phase == VERIFYACCEPT {
+		} else if m.Phase == VERIFYACCEPT {
 			// this node hasn't received any proposal
 			// corresponding to this log entry yet, reject
 			m.OK = false
@@ -210,9 +211,8 @@ func (n *Node) recoverHandler() *Message {
 // it returns the signature from these info
 func signMessage(m *Message, k *rsa.PrivateKey) string {
 	// construct original data
-	d := strconv.Itoa(int(m.Proposal)) + strconv.Itoa(int(m.Proposer)) +
-		strconv.Itoa(int(m.DataID)) + strconv.Itoa(int(m.LogID)) +
-		m.Value + m.ClientSignature
+	d := fmt.Sprintf("%d%d%d%d%s%s%t",
+		m.Proposal, m.Proposer, m.DataID, m.LogID, m.Value, m.ClientSignature, m.OK)
 	// sign with self key
 	sig, err := util.Sign(d, k)
 	if err != nil {
@@ -224,9 +224,8 @@ func signMessage(m *Message, k *rsa.PrivateKey) string {
 
 func verifyMessage(m *Message, k *rsa.PublicKey) bool {
 	// construct original data
-	d := strconv.Itoa(int(m.Proposal)) + strconv.Itoa(int(m.Proposer)) +
-		strconv.Itoa(int(m.DataID)) + strconv.Itoa(int(m.LogID)) +
-		m.Value + m.ClientSignature
+	d := fmt.Sprintf("%d%d%d%d%s%s%t",
+		m.Proposal, m.Proposer, m.DataID, m.LogID, m.Value, m.ClientSignature, m.OK)
 	if err := util.Verify(d, m.SelfSignature, k); err != nil {
 		return false
 	} else {
@@ -452,6 +451,7 @@ func (n *Node) proposerWaitAccept(notify chan *Message,
 func (n *Node) acceptor(mchan chan chanMsg, logID, dataID uint32) {
 	committed := false
 	var propMsg *Message
+	var propMsgLock sync.RWMutex
 	// update data ids table
 	n.dataidsLock.Lock()
 	n.dataids[dataID] = dataID
@@ -484,26 +484,41 @@ func (n *Node) acceptor(mchan chan chanMsg, logID, dataID uint32) {
 		return
 	}
 
-	for !committed {
-		select {
-		case cm := <-mchan:
+	// start a seperate gorouintes to handle verify and normal requests concurrently
+	vchan, nchan := make(chan chanMsg), make(chan chanMsg)
+	rchan := make(chan struct{})
+	// verify requests
+	go func(vchan chan chanMsg, propMsg **Message, lock *sync.RWMutex) {
+		for {
+			cm := <-vchan
+			if cm.c == nil {
+				// a nil return channel indicates to exit
+				return
+			}
+			(*lock).RLock()
+			cm.m = n.acceptorVerify(*propMsg, cm.m)
+			(*lock).RUnlock()
+			cm.c <- cm.m
+		}
+	}(vchan, &propMsg, &propMsgLock)
+	// normal requests
+	go func(nchan chan chanMsg, propMsg **Message, lock *sync.RWMutex, rchan chan struct{}) {
+		for {
+			cm := <-nchan
 			m := cm.m
-			Logger.Debugf("acceptor %d received message: proposal %d from proposer %d for data %d"+
-				" log %d, representing with entry %p with id %d",
-				n.config.ID, m.Proposal, m.Proposer, m.DataID, m.LogID, e, e.ID)
-
-			if m.Phase == VERIFYPREPARE || m.Phase == VERIFYACCEPT {
-				m = n.acceptorVerify(propMsg, m)
-				cm.c <- m
-			} else if m.Phase == PREPARE {
-				propMsg = m
+			if m.Phase == PREPARE {
+				(*lock).Lock()
+				*propMsg = m
+				(*lock).Unlock()
 				n.acceptorPhase1(&hp, &ha, v, m)
 				Logger.Debugf("acceptor %d finished phase 1 for proposal %d from %d for data %d"+
 					" log %d with hp %d ha %d value %s, res is %t",
 					n.config.ID, m.Proposal, m.Proposer, m.DataID, m.LogID, hp, ha, v, m.OK)
 				cm.c <- m
 			} else if m.Phase == ACCEPT {
-				propMsg = m
+				(*lock).Lock()
+				*propMsg = m
+				(*lock).Unlock()
 				n.acceptorPhase2(&hp, &ha, &v, m)
 				Logger.Debugf("acceptor %d finished phase 2 for proposal %d from %d for data %d"+
 					" log %d with hp %d ha %d value %s, res is %t",
@@ -512,15 +527,34 @@ func (n *Node) acceptor(mchan chan chanMsg, logID, dataID uint32) {
 			} else {
 				committed = n.acceptorPhase3(&hp, &ha, &v, m)
 				if committed {
-					e.Value = v
-					r.Commit(e)
-
 					Logger.Debugf("acceptor %d finshed phase 3 with committed %t for proposal %d data"+
 						" %d log %d value %s",
 						n.config.ID, committed, m.Proposal, m.DataID, m.LogID, m.Value)
+					rchan <- struct{}{}
 					return
 				}
 			}
+		}
+	}(nchan, &propMsg, &propMsgLock, rchan)
+
+	for !committed {
+		select {
+		case cm := <-mchan:
+			m := cm.m
+			Logger.Debugf("acceptor %d received message phase %d: proposal %d from proposer %d"+
+				" for data %d log %d, representing with entry %p with id %d",
+				n.config.ID, m.Phase, m.Proposal, m.Proposer, m.DataID, m.LogID, e, e.ID)
+
+			if m.Phase == VERIFYPREPARE || m.Phase == VERIFYACCEPT {
+				vchan <- cm
+			} else {
+				nchan <- cm
+			}
+		case <-rchan:
+			vchan <- chanMsg{nil, nil}
+			e.Value = v
+			r.Commit(e)
+			return
 		case <-time.After(n.config.AcceptorTimeout):
 			Logger.Warnf("acceptor %d timedout waiting for proposal, exiting", n.config.ID)
 			r.Free(e)
@@ -529,12 +563,21 @@ func (n *Node) acceptor(mchan chan chanMsg, logID, dataID uint32) {
 	}
 }
 
-// return what proposer has sent to me for others to check
-// add signature of myself
+// return what proposer has sent to me for others to check and add signature of myself
+// if no any propMsg has ever been received yet,
 func (n *Node) acceptorVerify(propMsg *Message, reqMsg *Message) *Message {
 	phase := reqMsg.Phase
-	*reqMsg = *propMsg
+	if propMsg == nil {
+		Logger.Debugf("acceptor %d has not received proposal yet, reject verify request",
+			n.config.ID)
+		reqMsg.OK = false
+	} else {
+		Logger.Debugf("acceptor %d returned proposal message", n.config.ID)
+		*reqMsg = *propMsg
+		reqMsg.OK = true
+	}
 	reqMsg.Phase = phase
+	reqMsg.Proposer = n.config.ID
 	reqMsg.SelfSignature = signMessage(reqMsg, n.config.SelfKey)
 	return reqMsg
 }
@@ -543,41 +586,46 @@ func (n *Node) acceptorWait(notify chan *Message) string {
 	waiting := true
 	totalCount := 0
 	// signature -> value, count
-	values := make(map[string]struct {
-		v string
-		c int
-	})
+	values := make(map[string]int)
 
 	for waiting {
 		select {
 		case nm := <-notify:
-			if nm.Phase != VERIFYPREPARE && nm.Phase != VERIFYACCEPT {
+			Logger.Debugf("acceptor %d received %d responses", n.config.ID, totalCount)
+			if nm == nil || !nm.OK {
+				Logger.Warnf("acceptor %d detected a verify request is rejected", n.config.ID)
 				continue
 			}
-			if totalCount++; totalCount > len(n.config.Peers) {
-				waiting = false
-				break
+			if nm.Phase != VERIFYPREPARE && nm.Phase != VERIFYACCEPT {
+				Logger.Warnf("acceptor %d detected a verify request has wrong phase %d",
+					n.config.ID, nm.Phase)
+				continue
 			}
 			// check signature first
 			if peer, ok := n.config.Peers[nm.Proposer]; !ok {
-				// this peer doesn't exist
+				Logger.Warnf("acceptor %d detected a proposal %d with non-existing proposer %d",
+					n.config.ID, nm.Proposal, nm.Proposer)
 				continue
 			} else if !verifyMessage(nm, peer.PubKey) {
-				// this signature is not valid
-				continue
-			} else if _, ok := values[nm.SelfSignature]; ok {
-				// this signature has shown more than once
+				Logger.Warnf("acceptor %d detected an invalid message from peer [%d %s]",
+					n.config.ID, nm.Proposer, peer.Addr.String())
 				continue
 			}
-			if info, ok := values[nm.SelfSignature]; !ok {
-				values[nm.SelfSignature] = struct {
-					v string
-					c int
-				}{nm.Value, 1}
+			if _, ok := values[nm.Value]; !ok {
+				Logger.Debugf("acceptor %d found new value %s", n.config.ID, nm.Value)
+				values[nm.Value] = 1
 			} else {
-				info.c++
+				Logger.Debugf("acceptor %d took value %s into account", n.config.ID, nm.Value)
+				values[nm.Value]++
+			}
+			if totalCount++; totalCount >= len(n.config.Peers) {
+				Logger.Warnf("acceptor %d has received enough responses",
+					n.config.ID, totalCount)
+				waiting = false
+				break
 			}
 		case <-time.After(n.config.AcceptorTimeout):
+			Logger.Debugf("acceptor %d timedout waiting for verify response", n.config.ID)
 			waiting = false
 			break
 		}
@@ -587,16 +635,17 @@ func (n *Node) acceptorWait(notify chan *Message) string {
 	max := 0
 	decidedValue := ""
 	valid := false
-	for _, v := range values {
-		if v.c > max {
-			max = v.c
-			decidedValue = v.v
+	for k, v := range values {
+		if v > max {
+			max = v
+			decidedValue = k
 			valid = true
-		} else if v.c == max {
+		} else if v == max {
 			valid = false
 		}
 	}
-
+	Logger.Debugf("acceptor %d's conclusion: %t %d [%s] %d",
+		n.config.ID, valid, max, decidedValue, len(values))
 	if valid && max > 0 && max >= int(2*n.config.FaultyNumber) && decidedValue != "" {
 		return decidedValue
 	}
@@ -612,11 +661,14 @@ func (n *Node) acceptorPhase1(hp *uint32, ha *uint32, v string, m *Message) {
 			// check signature first
 			if peer, ok := n.config.Peers[m.Proposer]; !ok {
 				// peer not found, reject
+				Logger.Debugf("proposal for data %d log %d is from a non-existing peer %d",
+					m.Proposal, m.DataID, m.LogID, m.Proposer)
 				m.OK = false
 				return
 			} else {
 				if !verifyMessage(m, peer.PubKey) ||
 					util.Verify(m.Value, m.ClientSignature, n.config.ClientKey) != nil {
+					Logger.Warnf("message from proposer %d couldn't be verified", m.Proposer)
 					m.OK = false
 					return
 				}
@@ -627,6 +679,8 @@ func (n *Node) acceptorPhase1(hp *uint32, ha *uint32, v string, m *Message) {
 			notify := n.Broadcast(m)
 			// wait for response
 			if decidedValue := n.acceptorWait(notify); decidedValue != m.Value {
+				Logger.Warnf("acceptor %d found inconsistent responses from others value %s != %s",
+					n.config.ID, decidedValue, m.Value)
 				m.OK = false
 				return
 			}

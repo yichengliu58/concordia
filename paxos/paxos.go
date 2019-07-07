@@ -737,9 +737,8 @@ func (n *Node) acceptorPhase3(hp *uint32, ha *uint32, v *string, m *Message) boo
 				ok := false
 				for _, p := range n.config.Peers {
 					// construct original data
-					d := strconv.Itoa(int(m.Proposal)) + strconv.Itoa(int(m.Proposer)) +
-						strconv.Itoa(int(m.DataID)) + strconv.Itoa(int(m.LogID)) +
-						m.Value + m.ClientSignature
+					d := fmt.Sprintf("%d%d%d%d%s%s%t",
+						m.Proposal, m.Proposer, m.DataID, m.LogID, m.Value, m.ClientSignature, m.OK)
 					if err := util.Verify(d, v, p.PubKey); err == nil {
 						ok = true
 					}

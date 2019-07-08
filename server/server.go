@@ -47,8 +47,7 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("signature header not found"))
 			return
 		}
-		clientSig := make([]byte, 0)
-		if _, err := base64.StdEncoding.Decode([]byte(clientSigOrig), clientSig); err != nil {
+		if clientSig, err = base64.StdEncoding.DecodeString(clientSigOrig); err != nil {
 			logger.Debugf("request doesn't have a valid signature header")
 			w.WriteHeader(400)
 			w.Write([]byte("signature header not valid"))

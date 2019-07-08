@@ -39,6 +39,7 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientSigOrig := r.Header.Get(config.SignatureHeader)
+	var clientSig []byte
 	if config.ByzantineFaultTolerance {
 		if clientSigOrig == "" {
 			logger.Debugf("request doesn't have a valid signature header")
@@ -102,7 +103,7 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// begin proposal
-	ok, err := pnode.Propose(uint32(dataID), digest, clientSig)
+	ok, err := pnode.Propose(uint32(dataID), digest, string(clientSig))
 	if !ok {
 		logger.Warnf("failed to propose data %d value %s, %s", dataID, digest, err.Error())
 		os.Remove(filename)

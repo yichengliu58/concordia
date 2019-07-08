@@ -4,6 +4,7 @@ import (
 	"concordia/paxos"
 	"concordia/util"
 	"crypto/md5"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,16 +38,23 @@ func fileWriter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientSig := r.Header.Get(config.SignatureHeader)
+	clientSigOrig := r.Header.Get(config.SignatureHeader)
 	if config.ByzantineFaultTolerance {
-		if clientSig == "" {
+		if clientSigOrig == "" {
 			logger.Debugf("request doesn't have a valid signature header")
 			w.WriteHeader(400)
 			w.Write([]byte("signature header not found"))
 			return
 		}
+		clientSig := make([]byte, 0)
+		if _, err := base64.StdEncoding.Decode([]byte(clientSigOrig), clientSig); err != nil {
+			logger.Debugf("request doesn't have a valid signature header")
+			w.WriteHeader(400)
+			w.Write([]byte("signature header not valid"))
+			return
+		}
 		// check client signature
-		if util.Verify(value, clientSig, config.ClientKey) != nil {
+		if util.Verify(value, string(clientSig), config.ClientKey) != nil {
 			// failed to verify client signature
 			logger.Debugf("request contains an invalid client signature")
 			w.WriteHeader(400)

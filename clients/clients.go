@@ -15,12 +15,13 @@ import (
 
 var (
 	client http.Client
-	stat   map[int]time.Duration
+	stat   = make(map[int]time.Duration)
 	lock   sync.Mutex
 )
 
-func request(i int, cont *bytes.Buffer, dig string, sig string, wg *sync.WaitGroup) {
+func request(i int, content []byte, dig string, sig string, wg *sync.WaitGroup) {
 	defer wg.Done()
+	cont := bytes.NewBuffer(content)
 	req, _ := http.NewRequest("POST", "http://127.0.0.1:8000/deploy", cont)
 	req.Header.Add("FileDigest", dig)
 	req.Header.Add("DataID", strconv.Itoa(13))
@@ -52,8 +53,6 @@ func main() {
 	magic := rand.Intn(*s*1024 - 1)
 	content[magic] = 90
 
-	contbuf := bytes.NewBuffer(content)
-
 	digest := md5.Sum(content)
 	digests := fmt.Sprintf("%x", digest)
 
@@ -68,7 +67,7 @@ func main() {
 		// start requests
 		for i := 0; i < *c; i++ {
 			wg.Add(1)
-			go request(i, contbuf, digests, sign, &wg)
+			go request(i, content, digests, sign, &wg)
 		}
 
 		wg.Wait()

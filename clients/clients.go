@@ -26,8 +26,10 @@ func request(i int, s int, b bool, wg *sync.WaitGroup) {
 	content := make([]byte, s*1024)
 	// rand
 	rand.Seed(time.Now().Unix())
-	magic := rand.Intn(s*1024 - 1)
-	content[magic] = 90
+	magic := rand.Intn(255)
+	for i := 0; i < len(content); i++ {
+		content[i] = byte(magic)
+	}
 
 	digest := md5.Sum(content)
 	digests := fmt.Sprintf("%x", digest)
@@ -66,10 +68,14 @@ func request(i int, s int, b bool, wg *sync.WaitGroup) {
 
 func main() {
 	b := flag.Bool("b", false, "if byzantine fault")
-	n := flag.Int("n", 5, "requests number for each concurrency")
-	c := flag.Int("c", 10, "concurrent requests")
-	s := flag.Int("s", 1024, "size of file content in KB")
+	n := flag.Int("n", 1, "requests number for each concurrency")
+	c := flag.Int("c", 1, "concurrent requests")
+	s := flag.Int("s", 1, "size of file content in KB")
 	flag.Parse()
+
+	client.Transport = &http.Transport{
+		DisableCompression: true,
+	}
 
 	for j := 0; j < *n; j++ {
 		var wg sync.WaitGroup
@@ -81,11 +87,15 @@ func main() {
 
 		wg.Wait()
 
-		var total time.Duration
-		for _, v := range stat {
-			total += v
+		if len(stat) > 0 {
+			var total time.Duration
+			for _, v := range stat {
+				total += v
+			}
+			fmt.Printf("%d ", total.Nanoseconds()/int64(len(stat))/1000000)
+		} else {
+			fmt.Printf("%d ", 0)
 		}
-		fmt.Printf("%d ", total.Nanoseconds()/int64(len(stat))/1000000)
 	}
 	fmt.Println()
 }

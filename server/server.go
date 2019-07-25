@@ -177,7 +177,7 @@ func fetchFile(data, log uint32, name string) {
 			digests := fmt.Sprintf("%x", digest.Sum(nil))
 			if digests != name {
 				logger.Errorf("file %s received from %s has wrong digest: %s != %s, deleting",
-					name, digests, name, p.Addr.IP.String())
+					name, p.Addr.IP.String(), digests, name)
 				os.Remove(config.FileDir + "/" + name)
 				pnode.FailCommand(data, log)
 			} else {

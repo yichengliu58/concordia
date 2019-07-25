@@ -36,7 +36,11 @@ func request(i int, s int, b bool, wg *sync.WaitGroup) {
 
 	sign := ""
 	if b {
-		ck, _ := util.ParsePrivateKey("keys/client/privatekey.pem")
+		ck, err := util.ParsePrivateKey("keys/client/privatekey.pem")
+		if err != nil {
+			fmt.Println("failed to sign:", err)
+			return
+		}
 		sign, _ = util.Sign(string(content), ck)
 	}
 
@@ -61,7 +65,9 @@ func request(i int, s int, b bool, wg *sync.WaitGroup) {
 		stat[i] = after.Sub(before)
 		lock.Unlock()
 	} else {
-		fmt.Println("unsuccessful resp:", resp.StatusCode)
+		buf := make([]byte, 128)
+		resp.Body.Read(buf)
+		fmt.Println("unsuccessful resp:", resp.StatusCode, string(buf))
 		return
 	}
 }

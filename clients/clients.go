@@ -15,12 +15,11 @@ import (
 
 var (
 	client http.Client
-	wg     sync.WaitGroup
 	stat   map[int]time.Duration
 	lock   sync.Mutex
 )
 
-func request(i int, cont *bytes.Buffer, dig string, sig string, n int) {
+func request(i int, cont *bytes.Buffer, dig string, sig string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	req, _ := http.NewRequest("POST", "http://127.0.0.1:8000/deploy", cont)
 	req.Header.Add("FileDigest", dig)
@@ -64,17 +63,20 @@ func main() {
 		sign, _ = util.Sign(string(content), ck)
 	}
 
-	// start requests
-	for i := 0; i < *c; i++ {
-		wg.Add(1)
-		go request(i, contbuf, digests, sign, *n)
-	}
+	for j := 0; j < *n; j++ {
+		var wg sync.WaitGroup
+		// start requests
+		for i := 0; i < *c; i++ {
+			wg.Add(1)
+			go request(i, contbuf, digests, sign, &wg)
+		}
 
-	wg.Wait()
-	var total time.Duration
-	for k, v := range stat {
-		total += v
-	}
+		wg.Wait()
 
-	fmt.Printf("%d ", total.Nanoseconds()/int64(len(stat)))
+		var total time.Duration
+		for _, v := range stat {
+			total += v
+		}
+		fmt.Printf("%d ", total.Nanoseconds()/int64(len(stat)))
+	}
 }

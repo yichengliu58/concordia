@@ -1,4 +1,5 @@
 git pull
 go build
-rm -rf files/*
+rm -rf files/
+mkdir files
 ./concordia

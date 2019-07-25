@@ -76,6 +76,7 @@ func main() {
 		for _, v := range stat {
 			total += v
 		}
-		fmt.Printf("%d ", total.Nanoseconds()/int64(len(stat)))
+		fmt.Printf("%d ", total.Nanoseconds()/int64(len(stat))/1000000)
+		fmt.Println()
 	}
 }

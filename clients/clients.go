@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"concordia/util"
 	"crypto/md5"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -26,14 +27,17 @@ func request(i int, content []byte, dig string, sig string, wg *sync.WaitGroup) 
 	req.Header.Add("FileDigest", dig)
 	req.Header.Add("DataID", strconv.Itoa(13))
 	if sig != "" {
-		req.Header.Add("Signature", sig)
+		esig := base64.StdEncoding.EncodeToString([]byte(sig))
+		req.Header.Add("Signature", esig)
 	}
 
 	before := time.Now()
-	resp, _ := client.Do(req)
+	resp, err := client.Do(req)
 	after := time.Now()
 
-	if resp.StatusCode == 200 {
+	if err != nil {
+		fmt.Println(err)
+	} else if resp.StatusCode == 200 {
 		lock.Lock()
 		stat[i] = after.Sub(before)
 		lock.Unlock()

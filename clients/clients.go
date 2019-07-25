@@ -37,7 +37,7 @@ func request(i int, s int, b bool, wg *sync.WaitGroup) {
 	sign := ""
 	if b {
 		ck, err := util.ParsePrivateKey("keys/client/privatekey.pem")
-		sign, err = util.Sign(string(content), ck)
+		sign, err = util.Sign(digests, ck)
 		if err != nil {
 			fmt.Println("failed to sign:", err)
 			return

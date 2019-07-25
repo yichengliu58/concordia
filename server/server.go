@@ -119,7 +119,7 @@ func fileReader(w http.ResponseWriter, r *http.Request) {
 	// search for that file
 	file, err := os.Open(config.FileDir + "/" + name)
 	if err != nil {
-		logger.Errorf("failed to open file %s: %s", name, err.Error())
+		logger.Debugf("failed to open file %s: %s", name, err.Error())
 		w.WriteHeader(404)
 		return
 	}

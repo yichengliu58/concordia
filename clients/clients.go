@@ -37,10 +37,14 @@ func request(i int, content []byte, dig string, sig string, wg *sync.WaitGroup) 
 
 	if err != nil {
 		fmt.Println(err)
+		return
 	} else if resp.StatusCode == 200 {
 		lock.Lock()
 		stat[i] = after.Sub(before)
 		lock.Unlock()
+	} else {
+		fmt.Println("unsuccessful resp:", resp.StatusCode)
+		return
 	}
 }
 

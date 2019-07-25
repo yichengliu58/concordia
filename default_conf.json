@@ -3,7 +3,7 @@
   "ProtoPort": 10000,
   "ServicePort": 8000,
   "Peers": [
-    {"ID": 1, "PublicKey": "1/publickey.pem", "Addr": "169.254.80.31:10000"},
+    {"ID": 1, "PublicKey": "1/publickey.pem", "Addr": "169.254.162.182:10000"},
     {"ID": 2, "PublicKey": "2/publickey.pem", "Addr": "169.254.9.213:10000"},
     {"ID": 3, "PublicKey": "3/publickey.pem", "Addr": "169.254.169.101:10000"},
     {"ID": 4, "PublicKey": "4/publickey.pem", "Addr": "169.254.161.78:10000"},

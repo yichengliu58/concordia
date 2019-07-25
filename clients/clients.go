@@ -20,14 +20,30 @@ var (
 	lock   sync.Mutex
 )
 
-func request(i int, content []byte, dig string, sig string, wg *sync.WaitGroup) {
+func request(i int, s int, b bool, wg *sync.WaitGroup) {
 	defer wg.Done()
+
+	content := make([]byte, s*1024)
+	// rand
+	rand.Seed(time.Now().Unix())
+	magic := rand.Intn(s*1024 - 1)
+	content[magic] = 90
+
+	digest := md5.Sum(content)
+	digests := fmt.Sprintf("%x", digest)
+
+	sign := ""
+	if b {
+		ck, _ := util.ParsePrivateKey("keys/client/privatekey.pem")
+		sign, _ = util.Sign(string(content), ck)
+	}
+
 	cont := bytes.NewBuffer(content)
 	req, _ := http.NewRequest("POST", "http://127.0.0.1:8000/deploy", cont)
-	req.Header.Add("FileDigest", dig)
+	req.Header.Add("FileDigest", digests)
 	req.Header.Add("DataID", strconv.Itoa(13))
-	if sig != "" {
-		esig := base64.StdEncoding.EncodeToString([]byte(sig))
+	if sign != "" {
+		esig := base64.StdEncoding.EncodeToString([]byte(sign))
 		req.Header.Add("Signature", esig)
 	}
 
@@ -55,28 +71,12 @@ func main() {
 	s := flag.Int("s", 1024, "size of file content in KB")
 	flag.Parse()
 
-	content := make([]byte, *s*1024)
-	// rand
-	rand.Seed(time.Now().Unix())
-	magic := rand.Intn(*s*1024 - 1)
-	content[magic] = 90
-
-	digest := md5.Sum(content)
-	digests := fmt.Sprintf("%x", digest)
-
-	sign := ""
-	if *b {
-		ck, _ := util.ParsePrivateKey("keys/client/privatekey.pem")
-		sign, _ = util.Sign(string(content), ck)
-	}
-
 	for j := 0; j < *n; j++ {
-		fmt.Println(digests)
 		var wg sync.WaitGroup
 		// start requests
 		for i := 0; i < *c; i++ {
 			wg.Add(1)
-			go request(i, content, digests, sign, &wg)
+			go request(i, *s, *b, &wg)
 		}
 
 		wg.Wait()

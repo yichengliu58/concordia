@@ -71,6 +71,7 @@ func main() {
 	}
 
 	for j := 0; j < *n; j++ {
+		fmt.Println(digests)
 		var wg sync.WaitGroup
 		// start requests
 		for i := 0; i < *c; i++ {

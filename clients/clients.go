@@ -58,17 +58,16 @@ func request(i int, s int, b bool, wg *sync.WaitGroup) {
 	after := time.Now()
 
 	if err != nil {
-		fmt.Println(err)
-		return
+		fmt.Printf("%dth request failed due to network error: %v", i, err)
 	} else if resp.StatusCode == 200 {
 		lock.Lock()
 		stat[i] = after.Sub(before)
 		lock.Unlock()
 	} else {
-		buf := make([]byte, 128)
+		buf := make([]byte, 32)
 		resp.Body.Read(buf)
-		fmt.Println("unsuccessful resp:", resp.StatusCode, string(buf))
-		return
+		fmt.Printf("%dth request got error response: %d [%s]",
+			i, resp.StatusCode, string(buf))
 	}
 }
 
@@ -92,15 +91,15 @@ func main() {
 		}
 
 		wg.Wait()
-
+		fmt.Println()
 		if len(stat) > 0 {
 			var total time.Duration
 			for _, v := range stat {
 				total += v
 			}
-			fmt.Printf("%d ", total.Nanoseconds()/int64(len(stat))/1000000)
+			fmt.Printf("average response time: %d ", total.Nanoseconds()/int64(len(stat))/1000000)
 		} else {
-			fmt.Printf("%d ", 0)
+			fmt.Println("none request succeed!")
 		}
 	}
 	fmt.Println()

@@ -64,7 +64,7 @@ func request(i int, s int, b bool, wg *sync.WaitGroup) {
 		stat[i] = after.Sub(before)
 		lock.Unlock()
 	} else {
-		buf := make([]byte, 32)
+		buf := make([]byte, 64)
 		resp.Body.Read(buf)
 		fmt.Printf("%dth request got error response: %d [%s]",
 			i, resp.StatusCode, string(buf))
@@ -98,8 +98,6 @@ func main() {
 				total += v
 			}
 			fmt.Printf("average response time: %d ", total.Nanoseconds()/int64(len(stat))/1000000)
-		} else {
-			fmt.Println("none request succeed!")
 		}
 	}
 	fmt.Println()
